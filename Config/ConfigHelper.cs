@@ -16,7 +16,7 @@ namespace Config
         /// <summary>
         /// 配置文件数据
         /// </summary>
-        private Dictionary<string, object> _Data = new();
+        private Dictionary<string, Dictionary<string, ConfigDataType>> _Data = new();
 
         /// <summary>
         /// 引索器
@@ -54,8 +54,8 @@ namespace Config
         /// <param name="LondResult">加载配置文件结果</param>
         /// <param name="path">配置文件路径</param>
         public ConfigHelper(out bool LondResult, string path = "Config.json")
+            : this(path)
         {
-            Path = System.IO.Path.GetFullPath(path);
             LondResult = FileLondAsync().Result;
         }
 
@@ -67,10 +67,10 @@ namespace Config
         {
             try
             {
-                using (StreamReader sr = new StreamReader(Path))
+                string fileContents = await File.ReadAllTextAsync(Path);
+                using (JsonDocument document = JsonDocument.Parse(fileContents))
                 {
-                    string fileContents = await sr.ReadToEndAsync();
-                    _Data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(fileContents)!;
+                    _Data = document.Deserialize<Dictionary<string, Dictionary<string, ConfigDataType>>>()!;
                 }
 
                 return true;
@@ -82,6 +82,7 @@ namespace Config
                 return false;
             }
         }
+
         /// <summary>
         /// 保存配置文件
         /// </summary>
@@ -90,15 +91,12 @@ namespace Config
         {
             try
             {
-                using (var sw = new StreamWriter(Path))
+                var options = new JsonSerializerOptions
                 {
-                    var options = new JsonSerializerOptions
-                    {
-                        WriteIndented = true,
-                    };
-                    string json = JsonSerializer.Serialize(_Data, options);
-                    await sw.WriteAsync(json);
-                }
+                    WriteIndented = true,
+                };
+                string json = JsonSerializer.Serialize(_Data, options);
+                await File.WriteAllTextAsync(Path, json);
 
                 return true;
             }
@@ -119,20 +117,14 @@ namespace Config
         /// <param name="value">保存值</param>
         public void SetValue<T>(string section, string key, T value)
         {
-            ConfigDataType InData = new()
+            _Data.TryGetValue(section, out Dictionary<string, ConfigDataType>? existingSection);
+            existingSection ??= new Dictionary<string, ConfigDataType>();
+            existingSection[key] = new ConfigDataType
             {
                 TypeName = typeof(T).FullName,
                 Value = value
             };
-
-            if (!_Data.TryGetValue(section, out object? existingSection))
-            {
-                _Data.Add(section, new Dictionary<string, ConfigDataType> { { key, InData } });
-            }
-            else if (existingSection is Dictionary<string, ConfigDataType> Data)
-            {
-                Data[key] = InData; // 这样可以处理密钥已存在或不存在的两种情况
-            }
+            _Data[section] = existingSection;
         }
 
         /// <summary>
@@ -143,20 +135,14 @@ namespace Config
         /// <param name="value">保存值</param>
         public void SetDynamicValue(string section, string key, dynamic value)
         {
-            ConfigDataType InData = new()
+            _Data.TryGetValue(section, out Dictionary<string, ConfigDataType>? existingSection);
+            existingSection ??= new Dictionary<string, ConfigDataType>();
+            existingSection[key] = new ConfigDataType
             {
                 TypeName = value.GetType().FullName,
                 Value = value
             };
-
-            if (!_Data.TryGetValue(section, out object? existingSection))
-            {
-                _Data.Add(section, new Dictionary<string, ConfigDataType> { { key, InData } });
-            }
-            else if (existingSection is Dictionary<string, ConfigDataType> Data)
-            {
-                Data[key] = InData; // 这样可以处理密钥已存在或不存在的两种情况
-            }
+            _Data[section] = existingSection;
         }
 
         /// <summary>
@@ -175,12 +161,9 @@ namespace Config
         /// <param name="key">目标键名</param>
         public void RemoveKey(string section, string key)
         {
-            if (_Data.TryGetValue(section, out object? existingSection))
+            if (_Data.TryGetValue(section, out Dictionary<string, ConfigDataType>? existingSection))
             {
-                if (existingSection is Dictionary<string, ConfigDataType> Data)
-                {
-                    Data.Remove(key);
-                }
+                existingSection.Remove(key);
             }
         }
 
@@ -193,17 +176,11 @@ namespace Config
         /// <returns></returns>
         public T? GetValue<T>(string section, string key)
         {
-            if (_Data.TryGetValue(section, out object? existingSection))
+            if (_Data.TryGetValue(section, out Dictionary<string, ConfigDataType>? existingSection))
             {
-                if (existingSection is Dictionary<string, ConfigDataType> Data)
+                if (existingSection.TryGetValue(key, out ConfigDataType? existingData) && existingData.TypeName == typeof(T).FullName)
                 {
-                    if (Data.TryGetValue(key, out ConfigDataType? existingData))
-                    {
-                        if (existingData.TypeName == typeof(T).FullName)
-                        {
-                            return (T?)existingData.Value;
-                        }
-                    }
+                    return (T?)existingData.Value;
                 }
             }
             return default;
@@ -231,14 +208,11 @@ namespace Config
         /// <returns>返回值</returns>
         public dynamic? GetDynamicValue(string section, string key)
         {
-            if (_Data.TryGetValue(section, out object? existingSection))
+            if (_Data.TryGetValue(section, out Dictionary<string, ConfigDataType>? existingSection))
             {
-                if (existingSection is Dictionary<string, ConfigDataType> Data)
+                if (existingSection.TryGetValue(key, out ConfigDataType? existingData))
                 {
-                    if (Data.TryGetValue(key, out ConfigDataType? existingData))
-                    {
-                        return existingData.Value;
-                    }
+                    return existingData.Value;
                 }
             }
             return default;
@@ -249,19 +223,16 @@ namespace Config
         /// </summary>
         /// <param name="section">目标分区</param>
         /// <returns>分区数据</returns>
-        public Dictionary<string, object> GetSection(string section)
+        public Dictionary<string, Dictionary<string, ConfigDataType>> GetSection(string section)
         {
-            if (_Data.TryGetValue(section, out object? existingSection))
+            if (_Data.TryGetValue(section, out Dictionary<string, ConfigDataType>? existingSection))
             {
-                if (existingSection is Dictionary<string, ConfigDataType> Data)
+                Dictionary<string, Dictionary<string, ConfigDataType>> result = new();
+                foreach (var item in existingSection)
                 {
-                    Dictionary<string, object> result = new();
-                    foreach (var item in Data)
-                    {
-                        result.Add(item.Key, item.Value.DynamicValue());
-                    }
-                    return result;
+                    result.Add(item.Key, item.Value.DynamicValue());
                 }
+                return result;
             }
             return new();
         }
@@ -272,19 +243,16 @@ namespace Config
         /// <param name="section">目标分区</param>
         /// <param name="result">输出数据</param>
         /// <returns></returns>
-        public bool TryGetSection(string section, out Dictionary<string, object> result)
+        public bool TryGetSection(string section, out Dictionary<string, Dictionary<string, ConfigDataType>> result)
         {
-            if (_Data.TryGetValue(section, out object? existingSection))
+            if (_Data.TryGetValue(section, out Dictionary<string, ConfigDataType>? existingSection))
             {
-                if (existingSection is Dictionary<string, ConfigDataType> Data)
+                result = new();
+                foreach (var item in existingSection)
                 {
-                    result = new();
-                    foreach (var item in Data)
-                    {
-                        result.Add(item.Key, item.Value.DynamicValue());
-                    }
-                    return true;
+                    result.Add(item.Key, item.Value.DynamicValue());
                 }
+                return true;
             }
             result = new();
             return false;
@@ -308,14 +276,7 @@ namespace Config
         /// <returns></returns>
         public bool CheckKey(string section, string key)
         {
-            if (_Data.TryGetValue(section, out object? existingSection))
-            {
-                if (existingSection is Dictionary<string, ConfigDataType> Data)
-                {
-                    return Data.ContainsKey(key);
-                }
-            }
-            return false;
+            return _Data.TryGetValue(section, out Dictionary<string, ConfigDataType>? existingSection) && existingSection.ContainsKey(key);
         }
 
         /// <summary>
@@ -324,7 +285,7 @@ namespace Config
         /// <returns></returns>
         public string ToJson()
         {
-            return System.Text.Json.JsonSerializer.Serialize(_Data);
+            return JsonSerializer.Serialize(_Data);
         }
     }
 }

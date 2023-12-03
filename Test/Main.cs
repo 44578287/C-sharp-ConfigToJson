@@ -1,17 +1,21 @@
 ﻿using Config;
-// See https://aka.ms/new-console-template for more information
-Console.WriteLine("Hello, World!");
 
 ConfigHelper config = new();
 
-//config.SetValue("Test", "Dara0", new Test());
-//config.SetValue("Test", "Dara1", true);
-//config.SetValue("Test", "Dara2", 1.658);
-//config.SetValue("Test", "Dara3", "哈哈哈");
+config.SetValue("Test", "Data0", new Test());
+config.SetValue("Test", "Data1", true);
+config.SetValue("Test", "Data2", 1.658);
+config.SetValue("Test", "Data3", "哈哈哈");
 
-config["Main","1"] = new Test();
+//config["Main","1"] = new Test();
 
 config.FileSaveAsync().Wait();
+
+config.FileLondAsync().Wait();
+Console.WriteLine(config.ToJson());
+Console.WriteLine(config["Test", "Data3"]);
+
+
 
 class Test
 {
