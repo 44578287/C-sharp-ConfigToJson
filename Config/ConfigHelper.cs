@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Reflection;
+using System.Text.Json;
 using Config.DataModels;
 
 namespace Config
@@ -12,6 +13,11 @@ namespace Config
         /// 配置文件完整路径
         /// </summary>
         public string Path { get; }
+
+        /// <summary>
+        /// 目标程序集
+        /// </summary>
+        private Assembly Assembly;
 
         /// <summary>
         /// 配置文件数据
@@ -42,19 +48,22 @@ namespace Config
         /// <summary>
         /// 构造函数
         /// </summary>
+        /// <param name="_Assembly">目标程序集</param>
         /// <param name="path">配置文件路径</param>
-        public ConfigHelper(string path = "Config.json")
+        public ConfigHelper(Assembly _Assembly, string path = "Config.json")
         {
             Path = System.IO.Path.GetFullPath(path);
+            Assembly = _Assembly;
         }
 
         /// <summary>
         /// 构造函数
         /// </summary>
+        /// <param name="_Assembly">目标程序集</param>
         /// <param name="LondResult">加载配置文件结果</param>
         /// <param name="path">配置文件路径</param>
-        public ConfigHelper(out bool LondResult, string path = "Config.json")
-            : this(path)
+        public ConfigHelper(Assembly _Assembly, out bool LondResult, string path = "Config.json")
+            : this(_Assembly,path)
         {
             LondResult = FileLondAsync().Result;
         }
@@ -71,6 +80,27 @@ namespace Config
                 using (JsonDocument document = JsonDocument.Parse(fileContents))
                 {
                     _Data = document.Deserialize<Dictionary<string, Dictionary<string, ConfigDataType>>>()!;
+
+                    // 将JSON字符串还原为对象
+                    foreach (var section in _Data.Values)
+                    {
+                        foreach (var data in section.Values)
+                        {
+                            if (data.Value is System.Text.Json.JsonElement json && data.TypeName != null)
+                            {
+                                Type? objectType = this.Assembly.GetType(data.TypeName);
+
+                                if (objectType != null)
+                                {
+                                    var deserializedObject = JsonSerializer.Deserialize(json, objectType);
+                                    if (deserializedObject != null)
+                                    {
+                                        data.Value = deserializedObject;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 return true;

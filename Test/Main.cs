@@ -1,30 +1,21 @@
-﻿using Config;
+﻿using System.Reflection;
+using System.Text.Json;
+using Config;
+using Test;
 
-ConfigHelper config = new();
+ConfigHelper config = new(Assembly.GetExecutingAssembly());
 
-config.SetValue("Test", "Data0", new Test());
-config.SetValue("Test", "Data1", true);
-config.SetValue("Test", "Data2", 1.658);
-config.SetValue("Test", "Data3", "哈哈哈");
+config.SetValue("Data", "Data0", new DataClass());
+//config.SetValue("Test", "Data1", true);
+//config.SetValue("Test", "Data2", 1.658);
+//config.SetValue("Test", "Data3", "哈哈哈");
 
 //config["Main","1"] = new Test();
 
 config.FileSaveAsync().Wait();
 
 config.FileLondAsync().Wait();
-Console.WriteLine(config.ToJson());
-Console.WriteLine(config["Test", "Data3"]);
+//Console.WriteLine(config.ToJson());
+//Console.WriteLine(JsonSerializer.Deserialize<Test>(config["Data", "Data0"]).T.D);
+Console.WriteLine(config["Data", "Data0"].T.D);
 
-
-
-class Test
-{
-    public int I { get; set; } = 10;
-    public string S { get; set; } = "Hello";
-    public Test2 T { get; set; } = new();
-}
-class Test2
-{
-    public bool B { get; set; } = true;
-    public double D { get; set; } = 1.658;
-}
